@@ -1,9 +1,11 @@
 import logging
 import asyncio
+import os  # Додай цей імпорт
 from aiogram import Bot, Dispatcher, types, executor
 from aiohttp import web
 
-TOKEN = 'ТВІЙ_НОВИЙ_ТОКЕН_ТУТ' # Обов'язково новий після revoke!
+# Тепер бот бере токен зі змінних оточення Render
+TOKEN = os.getenv('BOT_TOKEN')
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=TOKEN, parse_mode="Markdown")
