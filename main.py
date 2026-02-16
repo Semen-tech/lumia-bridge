@@ -9,7 +9,7 @@ dp = Dispatcher(bot)
 
 # Сюди будеш додавати аліаси: "назва": ID_групи
 ALIASES = {
-    "test": -1002263944682, 
+    "test": 440640603, 
 }
 
 @dp.message_handler(commands=['start'])
