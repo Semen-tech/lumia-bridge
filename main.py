@@ -10,7 +10,7 @@ TOKEN = os.getenv('BOT_TOKEN')
 DB_FILE = "aliases.json"
 
 logging.basicConfig(level=logging.INFO)
-bot = Bot(token=TOKEN, parse_mode="Markdown")
+bot = Bot(token=TOKEN, parse_mode="HTML")
 dp = Dispatcher(bot)
 
 # Завантаження аліасів
@@ -41,7 +41,11 @@ async def handle(request):
 
 @dp.message_handler(commands=['start'])
 async def cmd_start(message: types.Message):
-    await message.reply(f"Люмія 2.0 на зв'язку! Твій ID: `{message.chat.id}`\nВикористовуй /save_alias, щоб додати цей чат.")
+    # Використовуємо HTML тег <code> замість бектіків
+    await message.reply(
+        f"Люмія 2.0 на зв'язку! Твій ID: <code>{message.chat.id}</code>\n"
+        "Використовуй /save_alias, щоб додати цей чат."
+    )
 
 @dp.message_handler(commands=['save_alias'])
 async def cmd_save_alias(message: types.Message):
@@ -62,7 +66,25 @@ async def cmd_list(message: types.Message):
 async def shout_handler(message: types.Message):
     args = message.get_args().split(maxsplit=1)
     if len(args) < 2:
-        return await message.reply("Мало інформації! Треба: `/shout [аліас] [текст]`")
+        return await message.reply("Мало інформації! Треба: /shout [аліас] [текст]")
+
+    alias, text = args[0], args[1]
+    target_id = aliases.get(alias)
+
+    if not target_id:
+        return await message.reply(f"Хто такий {alias}? Я його не знаю. Спробуй /list")
+
+    sender = message.from_user.full_name
+    source = message.chat.title or "Приват"
+
+    # Гарне оформлення через HTML
+    header = f"🗣 <b>КРИК З:</b> {source}\n👤 <b>Від:</b> {sender}\n\n"
+
+    try:
+        await bot.send_message(target_id, header + text)
+        await message.reply(f"Полетіло в <b>{alias}</b>! 🚀")
+    except Exception as e:
+        await message.reply(f"Не можу докричатися: {e}")
     
     alias, text = args[0], args[1]
     target_id = aliases.get(alias)
