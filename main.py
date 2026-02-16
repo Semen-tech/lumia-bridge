@@ -40,7 +40,7 @@ async def keep_alive():
         logging.warning("APP_URL not set! Anti-sleep disabled.")
         return
     while True:
-        await asyncio.sleep(600) # 10 хвилин
+        await asyncio.sleep(300) # 5 хвилин
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(APP_URL) as resp:
@@ -52,17 +52,32 @@ async def keep_alive():
 @dp.inline_handler()
 async def inline_handler(query: types.InlineQuery):
     results = []
-    for name, chat_id in aliases.items():
-        results.append(
-            types.InlineQueryResultArticle(
-                id=f"shout_{name}",
-                title=f"📢 Shout to: {name}",
-                description=f"Send message to ID: {chat_id}",
-                input_message_content=types.InputTextMessageContent(
-                    f"/shout {name} "
+    
+    # Якщо користувач ще нічого не ввів після імені бота
+    if not query.query:
+        for name, chat_id in aliases.items():
+            results.append(
+                types.InlineQueryResultArticle(
+                    id=f"select_{name}",
+                    title=f"📢 Обрати чат: {name}",
+                    description=f"Натисни, щоб підставити команду для {name}",
+                    # Ця магія підставляє текст у поле вводу БЕЗ відправки
+                    switch_inline_query_current_chat=f"shout {name} ",
+                    input_message_content=types.InputTextMessageContent(f"Обрано {name}") # Це не спрацює, бо switch... має пріоритет
                 )
             )
+    
+    # Якщо користувач вже обрав аліас і пише текст (наприклад: @LumiaC_bot shout it Привіт)
+    else:
+        results.append(
+            types.InlineQueryResultArticle(
+                id="send_shout",
+                title="🚀 Надіслати Крик",
+                description=f"Текст: {query.query}",
+                input_message_content=types.InputTextMessageContent(f"/{query.query}")
+            )
         )
+        
     await query.answer(results, cache_time=1, is_personal=True)
 
 # --- ОБРОБНИКИ КОМАНД ---
