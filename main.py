@@ -12,7 +12,8 @@ bot = Bot(token=TOKEN, parse_mode="Markdown")
 dp = Dispatcher(bot)
 
 ALIASES = {
-    "test": 440640603, # Без лапок!
+    "test": 440640603,           # Твій приват
+    "it": -1001724902666,        # Твоя група IT
 }
 
 # Магія для Render, щоб він не бачив Failed
