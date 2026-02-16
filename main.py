@@ -1,42 +1,50 @@
 import logging
+import asyncio
 from aiogram import Bot, Dispatcher, types, executor
+from aiohttp import web
 
-TOKEN = '8428334603:AAE72CDCWMDzy1yCSWIQxsP3hnwp2Ssdk2s'
+TOKEN = 'ТВІЙ_НОВИЙ_ТОКЕН_ТУТ' # Обов'язково новий після revoke!
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=TOKEN, parse_mode="Markdown")
 dp = Dispatcher(bot)
 
-# Сюди будеш додавати аліаси: "назва": ID_групи
 ALIASES = {
-    "test": 440640603, 
+    "test": 440640603, # Без лапок!
 }
+
+# Магія для Render, щоб він не бачив Failed
+async def handle(request):
+    return web.Response(text="Lumia is alive!")
 
 @dp.message_handler(commands=['start'])
 async def cmd_start(message: types.Message):
-    await message.reply(f"Люмія на зв'язку! ID чату: `{message.chat.id}`")
+    await message.reply(f"Люмія ожила! Твій ID: `{message.chat.id}`")
 
 @dp.message_handler(commands=['shout'], content_types=types.ContentTypes.ANY)
 async def shout_handler(message: types.Message):
     args = message.get_args().split(maxsplit=1)
     if not args:
-        return await message.reply("Куди кричати? Треба: `/shout аліас текст`")
-
+        return await message.reply("Куди кричати? Приклад: `/shout test текст`")
+    
     alias = args[0]
     text = args[1] if len(args) > 1 else ""
     target_id = ALIASES.get(alias, alias)
 
-    info = f"🗣 **КРИК З ЧАТУ:** {message.chat.title}\n👤 **Від:** {message.from_user.full_name}\n\n"
+    info = f"🗣 **КРИК З ЧАТУ:** {message.chat.title or 'Приват'}\n👤 **Від:** {message.from_user.full_name}\n\n"
 
     try:
-        # Якщо є реплай на медіа (фото/стікер/відео)
-        if message.reply_to_message:
-            await bot.copy_message(target_id, message.chat.id, message.reply_to_message.message_id, caption=info + text)
-        else:
-            await bot.send_message(target_id, info + text)
-        await message.reply("Доставлено! 🚀")
+        await bot.send_message(target_id, info + text)
+        await message.reply("Полетіло! 🚀")
     except Exception as e:
-        await message.reply(f"Упс: {e}")
+        await message.reply(f"Помилка: {e}")
 
 if __name__ == '__main__':
-    executor.start_polling(dp, skip_updates=True)
+    # Створюємо міні-сервер для Render на порту 10000
+    app = web.Application()
+    app.router.add_get('/', handle)
+    
+    # Запускаємо і бота, і сервер одночасно
+    loop = asyncio.get_event_loop()
+    loop.create_task(executor.start_polling(dp, skip_updates=True))
+    web.run_app(app, port=10000)
