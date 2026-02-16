@@ -4,6 +4,7 @@ import os
 import json
 from aiogram import Bot, Dispatcher, types, executor
 from aiohttp import web
+from aiogram.types import InlineQuery, InlineQueryResultArticle, InputTextMessageContent
 
 # Налаштування
 TOKEN = os.getenv('BOT_TOKEN')
@@ -12,6 +13,24 @@ DB_FILE = "aliases.json"
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=TOKEN, parse_mode="HTML")
 dp = Dispatcher(bot)
+
+@dp.inline_handler()
+async def inline_shout(inline_query: InlineQuery):
+    results = []
+    # Проходимо по твоїх збережених аліасах
+    for name, chat_id in aliases.items():
+        results.append(
+            InlineQueryResultArticle(
+                id=str(chat_id),
+                title=f"Крикнути в: {name}",
+                description=f"Натисни, щоб підготувати команду для {name}",
+                input_message_content=InputTextMessageContent(
+                    f"/shout {name} " # Вставляє це в поле набору
+                )
+            )
+        )
+    
+    await bot.answer_inline_query(inline_query.id, results=results, cache_time=1)
 
 # Завантаження аліасів
 def load_aliases():
