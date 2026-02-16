@@ -1,53 +1,91 @@
 import logging
 import asyncio
-import os  # Додай цей імпорт
+import os
+import json
 from aiogram import Bot, Dispatcher, types, executor
 from aiohttp import web
 
-# Тепер бот бере токен зі змінних оточення Render
+# Налаштування
 TOKEN = os.getenv('BOT_TOKEN')
+DB_FILE = "aliases.json"
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=TOKEN, parse_mode="Markdown")
 dp = Dispatcher(bot)
 
-ALIASES = {
-    "test": 440640603,           # Твій приват
-    "it": -1001724902666,        # Твоя група IT
-}
+# Завантаження аліасів
+def load_aliases():
+    if os.path.exists(DB_FILE):
+        with open(DB_FILE, "r") as f:
+            return json.load(f)
+    return {"test": 440640603} # Твій дефолтний ID
 
-# Магія для Render, щоб він не бачив Failed
+aliases = load_aliases()
+
+def save_aliases():
+    with open(DB_FILE, "w") as f:
+        json.dump(aliases, f)
+
+# Магія підказок при наборі
+async def set_commands():
+    commands = [
+        types.BotCommand("shout", "Крикнути в чат: /shout [аліас] [текст]"),
+        types.BotCommand("save_alias", "Зберегти цей чат: /save_alias [назва]"),
+        types.BotCommand("list", "Показати всі доступні чати")
+    ]
+    await bot.set_my_commands(commands)
+
+# Web-server для Render
 async def handle(request):
-    return web.Response(text="Lumia is alive!")
+    return web.Response(text="Lumia 2.0 is sparkling!")
 
 @dp.message_handler(commands=['start'])
 async def cmd_start(message: types.Message):
-    await message.reply(f"Люмія ожила! Твій ID: `{message.chat.id}`")
+    await message.reply(f"Люмія 2.0 на зв'язку! Твій ID: `{message.chat.id}`\nВикористовуй /save_alias, щоб додати цей чат.")
 
-@dp.message_handler(commands=['shout'], content_types=types.ContentTypes.ANY)
+@dp.message_handler(commands=['save_alias'])
+async def cmd_save_alias(message: types.Message):
+    args = message.get_args().strip()
+    if not args:
+        return await message.reply("Назви аліас! Приклад: `/save_alias work`")
+    
+    aliases[args] = message.chat.id
+    save_aliases()
+    await message.reply(f"✅ Збережено! Тепер я знаю цей чат як `{args}`")
+
+@dp.message_handler(commands=['list'])
+async def cmd_list(message: types.Message):
+    text = "📍 **Доступні чати:**\n" + "\n".join([f"• `{k}`" for k in aliases.keys()])
+    await message.reply(text)
+
+@dp.message_handler(commands=['shout'])
 async def shout_handler(message: types.Message):
     args = message.get_args().split(maxsplit=1)
-    if not args:
-        return await message.reply("Куди кричати? Приклад: `/shout test текст`")
+    if len(args) < 2:
+        return await message.reply("Мало інформації! Треба: `/shout [аліас] [текст]`")
     
-    alias = args[0]
-    text = args[1] if len(args) > 1 else ""
-    target_id = ALIASES.get(alias, alias)
+    alias, text = args[0], args[1]
+    target_id = aliases.get(alias)
 
-    info = f"🗣 **КРИК З ЧАТУ:** {message.chat.title or 'Приват'}\n👤 **Від:** {message.from_user.full_name}\n\n"
+    if not target_id:
+        return await message.reply(f"Хто такий `{alias}`? Я його не знаю. Спробуй /list")
 
+    sender = message.from_user.full_name
+    source = message.chat.title or "Приват"
+    
+    header = f"🗣 **КРИК З:** {source}\n👤 **Від:** {sender}\n\n"
+    
     try:
-        await bot.send_message(target_id, info + text)
-        await message.reply("Полетіло! 🚀")
+        await bot.send_message(target_id, header + text)
+        await message.reply(f"Полетіло в `{alias}`! 🚀")
     except Exception as e:
-        await message.reply(f"Помилка: {e}")
+        await message.reply(f"Не можу докричатися: {e}")
 
 if __name__ == '__main__':
-    # Створюємо міні-сервер для Render на порту 10000
     app = web.Application()
     app.router.add_get('/', handle)
     
-    # Запускаємо і бота, і сервер одночасно
     loop = asyncio.get_event_loop()
+    loop.create_task(set_commands()) # Встановлюємо підказки
     loop.create_task(executor.start_polling(dp, skip_updates=True))
     web.run_app(app, port=10000)
