@@ -2,131 +2,122 @@ import logging
 import asyncio
 import os
 import json
+import aiohttp
 from aiogram import Bot, Dispatcher, types, executor
 from aiohttp import web
-from aiogram.types import InlineQuery, InlineQueryResultArticle, InputTextMessageContent
 
 # Налаштування
 TOKEN = os.getenv('BOT_TOKEN')
+APP_URL = os.getenv('APP_URL') # Твоє посилання на Render
 DB_FILE = "aliases.json"
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=TOKEN, parse_mode="HTML")
 dp = Dispatcher(bot)
 
+# --- РОБОТА З БАЗОЮ ДАНИХ (JSON) ---
+def load_db():
+    if os.path.exists(DB_FILE):
+        try:
+            with open(DB_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            logging.error(f"Error loading DB: {e}")
+    return {"test": 440640603} # Дефолтний аліас (твій ID)
+
+aliases = load_db()
+
+def save_db():
+    try:
+        with open(DB_FILE, "w", encoding="utf-8") as f:
+            json.dump(aliases, f, ensure_ascii=False, indent=4)
+    except Exception as e:
+        logging.error(f"Error saving DB: {e}")
+
+# --- АНТИ-СОН ---
+async def keep_alive():
+    if not APP_URL:
+        logging.warning("APP_URL not set! Anti-sleep disabled.")
+        return
+    while True:
+        await asyncio.sleep(600) # 10 хвилин
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(APP_URL) as resp:
+                    logging.info(f"Ping {APP_URL}: status {resp.status}")
+        except Exception as e:
+            logging.error(f"Ping failed: {e}")
+
+# --- INLINE MODE (Підказки) ---
 @dp.inline_handler()
-async def inline_shout(inline_query: InlineQuery):
+async def inline_handler(query: types.InlineQuery):
     results = []
-    # Проходимо по твоїх збережених аліасах
     for name, chat_id in aliases.items():
         results.append(
-            InlineQueryResultArticle(
-                id=str(chat_id),
-                title=f"Крикнути в: {name}",
-                description=f"Натисни, щоб підготувати команду для {name}",
-                input_message_content=InputTextMessageContent(
-                    f"/shout {name} " # Вставляє це в поле набору
+            types.InlineQueryResultArticle(
+                id=f"shout_{name}",
+                title=f"📢 Shout to: {name}",
+                description=f"Send message to ID: {chat_id}",
+                input_message_content=types.InputTextMessageContent(
+                    f"/shout {name} "
                 )
             )
         )
-    
-    await bot.answer_inline_query(inline_query.id, results=results, cache_time=1)
+    await query.answer(results, cache_time=1, is_personal=True)
 
-# Завантаження аліасів
-def load_aliases():
-    if os.path.exists(DB_FILE):
-        with open(DB_FILE, "r") as f:
-            return json.load(f)
-    return {"test": 440640603} # Твій дефолтний ID
-
-aliases = load_aliases()
-
-def save_aliases():
-    with open(DB_FILE, "w") as f:
-        json.dump(aliases, f)
-
-# Магія підказок при наборі
-async def set_commands():
-    commands = [
-        types.BotCommand("shout", "Крикнути в чат: /shout [аліас] [текст]"),
-        types.BotCommand("save_alias", "Зберегти цей чат: /save_alias [назва]"),
-        types.BotCommand("list", "Показати всі доступні чати")
-    ]
-    await bot.set_my_commands(commands)
-
-# Web-server для Render
-async def handle(request):
-    return web.Response(text="Lumia 2.0 is sparkling!")
-
+# --- ОБРОБНИКИ КОМАНД ---
 @dp.message_handler(commands=['start'])
 async def cmd_start(message: types.Message):
-    # Використовуємо HTML тег <code> замість бектіків
     await message.reply(
-        f"Люмія 2.0 на зв'язку! Твій ID: <code>{message.chat.id}</code>\n"
-        "Використовуй /save_alias, щоб додати цей чат."
+        "<b>Lumia Bridge</b> active.\n"
+        f"Your ID: <code>{message.chat.id}</code>\n"
+        "Use /save_alias [name] to add this chat."
     )
 
 @dp.message_handler(commands=['save_alias'])
-async def cmd_save_alias(message: types.Message):
-    args = message.get_args().strip()
-    if not args:
-        return await message.reply("Назви аліас! Приклад: `/save_alias work`")
+async def cmd_save(message: types.Message):
+    name = message.get_args().strip()
+    if not name:
+        return await message.reply("Provide a name: <code>/save_alias group_name</code>")
     
-    aliases[args] = message.chat.id
-    save_aliases()
-    await message.reply(f"✅ Збережено! Тепер я знаю цей чат як `{args}`")
-
-@dp.message_handler(commands=['list'])
-async def cmd_list(message: types.Message):
-    text = "📍 **Доступні чати:**\n" + "\n".join([f"• `{k}`" for k in aliases.keys()])
-    await message.reply(text)
+    aliases[name] = message.chat.id
+    save_db()
+    await message.reply(f"✅ Alias <b>{name}</b> saved for this chat!")
 
 @dp.message_handler(commands=['shout'])
-async def shout_handler(message: types.Message):
+async def cmd_shout(message: types.Message):
     args = message.get_args().split(maxsplit=1)
     if len(args) < 2:
-        return await message.reply("Мало інформації! Треба: /shout [аліас] [текст]")
-
-    alias, text = args[0], args[1]
-    target_id = aliases.get(alias)
-
-    if not target_id:
-        return await message.reply(f"Хто такий {alias}? Я його не знаю. Спробуй /list")
-
-    sender = message.from_user.full_name
-    source = message.chat.title or "Приват"
-
-    # Гарне оформлення через HTML
-    header = f"🗣 <b>КРИК З:</b> {source}\n👤 <b>Від:</b> {sender}\n\n"
-
-    try:
-        await bot.send_message(target_id, header + text)
-        await message.reply(f"Полетіло в <b>{alias}</b>! 🚀")
-    except Exception as e:
-        await message.reply(f"Не можу докричатися: {e}")
+        return await message.reply("Format: <code>/shout [alias] [text]</code>")
     
     alias, text = args[0], args[1]
     target_id = aliases.get(alias)
-
+    
     if not target_id:
-        return await message.reply(f"Хто такий `{alias}`? Я його не знаю. Спробуй /list")
-
-    sender = message.from_user.full_name
-    source = message.chat.title or "Приват"
+        return await message.reply(f"Unknown alias: <b>{alias}</b>")
     
-    header = f"🗣 **КРИК З:** {source}\n👤 **Від:** {sender}\n\n"
-    
+    header = f"🗣 <b>FROM:</b> {message.from_user.full_name}\n\n"
     try:
         await bot.send_message(target_id, header + text)
-        await message.reply(f"Полетіло в `{alias}`! 🚀")
+        await message.reply("Sent! 🚀")
     except Exception as e:
-        await message.reply(f"Не можу докричатися: {e}")
+        await message.reply(f"Delivery failed: {e}")
+
+# --- WEB SERVER FOR RENDER ---
+async def web_handle(request):
+    return web.Response(text="Lumia is alive. 🍸")
 
 if __name__ == '__main__':
     app = web.Application()
-    app.router.add_get('/', handle)
+    app.router.add_get('/', web_handle)
     
     loop = asyncio.get_event_loop()
-    loop.create_task(set_commands()) # Встановлюємо підказки
-    loop.create_task(executor.start_polling(dp, skip_updates=True))
-    web.run_app(app, port=10000)
+    loop.create_task(keep_alive())
+    
+    # Встановлюємо команди в меню
+    loop.run_until_complete(bot.set_my_commands([
+        types.BotCommand("shout", "Send message via alias"),
+        types.BotCommand("save_alias", "Save current chat as alias")
+    ]))
+    
+    executor.start_polling(dp, skip_updates=True)
