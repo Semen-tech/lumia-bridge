@@ -54,7 +54,7 @@ async def inline_handler(query: types.InlineQuery):
     results = []
     user_input = query.query.strip()
 
-    # КРОК 1: Ти написав @LumiaC_bot і пробіл (запит пустий)
+    # КРОК 1: Вибір аліасу
     if not user_input:
         for name in aliases.keys():
             results.append(
@@ -62,38 +62,35 @@ async def inline_handler(query: types.InlineQuery):
                     id=f"select_{name}",
                     title=f"📁 Обрати чат: {name}",
                     description="Натисни, щоб підготувати команду",
-                    # Ця магія підставляє текст у поле вводу і залишає його там!
-                    switch_inline_query_current_chat=f"shout {name} "
+                    # В aiogram 2.x назва аргументу саме така:
+                    switch_inline_query_current_chat=f"shout {name} ",
+                    # Обов'язкове поле, хоча switch його перекриє
+                    input_message_content=types.InputTextMessageContent(f"Обрано {name}")
                 )
             )
     
-    # КРОК 2: У полі вже є '@LumiaC_bot shout it ' і ти дописуєш текст
+    # КРОК 2: Введення тексту
     elif user_input.startswith("shout "):
         parts = user_input.split(maxsplit=2)
-        # Якщо ввели '@LumiaC_bot shout alias текст'
         if len(parts) >= 3:
-            alias_name = parts[1]
-            shout_text = parts[2]
-            
+            alias_name, shout_text = parts[1], parts[2]
             results.append(
                 types.InlineQueryResultArticle(
                     id="send_final",
                     title="🚀 НАДІСЛАТИ КРИК",
                     description=f"В чат: {alias_name} | Текст: {shout_text}",
-                    # Тільки цей результат реально відправляє команду в бот
                     input_message_content=types.InputTextMessageContent(
                         f"/shout {alias_name} {shout_text}"
                     )
                 )
             )
         else:
-            # Якщо аліас обрано, але тексту ще немає
             results.append(
                 types.InlineQueryResultArticle(
-                    id="waiting_text",
+                    id="waiting",
                     title="📝 Друкуй повідомлення...",
-                    description="Я чекаю на текст після аліасу",
-                    switch_inline_query_current_chat=user_input # Тримаємо фокус
+                    switch_inline_query_current_chat=user_input,
+                    input_message_content=types.InputTextMessageContent("Очікую текст...")
                 )
             )
 
