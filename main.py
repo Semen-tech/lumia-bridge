@@ -52,34 +52,53 @@ async def keep_alive():
 @dp.inline_handler()
 async def inline_handler(query: types.InlineQuery):
     results = []
-    
-    # Якщо користувач ще нічого не ввів після імені бота
-    if not query.query:
-        for name, chat_id in aliases.items():
+    user_input = query.query.strip()
+
+    # КРОК 1: Ти написав @LumiaC_bot і пробіл (запит пустий)
+    if not user_input:
+        for name in aliases.keys():
             results.append(
                 types.InlineQueryResultArticle(
                     id=f"select_{name}",
-                    title=f"📢 Обрати чат: {name}",
-                    description=f"Натисни, щоб підставити команду для {name}",
-                    # Ця магія підставляє текст у поле вводу БЕЗ відправки
-                    switch_inline_query_current_chat=f"shout {name} ",
-                    input_message_content=types.InputTextMessageContent(f"Обрано {name}") # Це не спрацює, бо switch... має пріоритет
+                    title=f"📁 Обрати чат: {name}",
+                    description="Натисни, щоб підготувати команду",
+                    # Ця магія підставляє текст у поле вводу і залишає його там!
+                    switch_inline_query_current_chat=f"shout {name} "
                 )
             )
     
-    # Якщо користувач вже обрав аліас і пише текст (наприклад: @LumiaC_bot shout it Привіт)
-    else:
-        results.append(
-            types.InlineQueryResultArticle(
-                id="send_shout",
-                title="🚀 Надіслати Крик",
-                description=f"Текст: {query.query}",
-                input_message_content=types.InputTextMessageContent(f"/{query.query}")
+    # КРОК 2: У полі вже є '@LumiaC_bot shout it ' і ти дописуєш текст
+    elif user_input.startswith("shout "):
+        parts = user_input.split(maxsplit=2)
+        # Якщо ввели '@LumiaC_bot shout alias текст'
+        if len(parts) >= 3:
+            alias_name = parts[1]
+            shout_text = parts[2]
+            
+            results.append(
+                types.InlineQueryResultArticle(
+                    id="send_final",
+                    title="🚀 НАДІСЛАТИ КРИК",
+                    description=f"В чат: {alias_name} | Текст: {shout_text}",
+                    # Тільки цей результат реально відправляє команду в бот
+                    input_message_content=types.InputTextMessageContent(
+                        f"/shout {alias_name} {shout_text}"
+                    )
+                )
             )
-        )
-        
-    await query.answer(results, cache_time=1, is_personal=True)
+        else:
+            # Якщо аліас обрано, але тексту ще немає
+            results.append(
+                types.InlineQueryResultArticle(
+                    id="waiting_text",
+                    title="📝 Друкуй повідомлення...",
+                    description="Я чекаю на текст після аліасу",
+                    switch_inline_query_current_chat=user_input # Тримаємо фокус
+                )
+            )
 
+    await query.answer(results, cache_time=1, is_personal=True)
+    
 # --- ОБРОБНИКИ КОМАНД ---
 @dp.message_handler(commands=['start'])
 async def cmd_start(message: types.Message):
